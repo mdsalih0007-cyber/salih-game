@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Salih's Mega Ramp</title>
+<style>
+  :root{--cyan:#19f0ff;--pink:#ff2bd6;--gold:#ffd23a;--ink:#070a1c}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--ink);color:#fff;font-family:"Trebuchet MS",Verdana,sans-serif;user-select:none;touch-action:none}
+  #game{position:fixed;inset:0}
+  /* Heads-up display */
+  .hud{position:fixed;top:14px;left:16px;display:flex;flex-wrap:wrap;gap:4px 18px;max-width:calc(100vw - 200px);text-shadow:0 0 14px var(--cyan)}
+  .stat{min-width:68px}
+  .stat small{display:block;font-size:12px;letter-spacing:.14em;opacity:.8}
+  .stat b{font-size:clamp(20px,4vw,34px);color:var(--cyan);font-style:italic}
+  #hint{position:fixed;left:0;right:0;bottom:18px;text-align:center;font-size:14px;opacity:.9;text-shadow:0 2px 8px #000;padding:0 90px}
+  /* Big retry button (always visible) */
+  #retry{position:fixed;right:16px;top:14px;font:inherit;font-weight:900;font-style:italic;font-size:clamp(16px,3.4vw,24px);color:var(--ink);
+    background:linear-gradient(135deg,var(--gold),#ff7a1a);border:0;border-radius:14px;padding:14px 22px;cursor:pointer;
+    box-shadow:0 0 24px #ff7a1a99,inset 0 -4px 0 #0003}
+  #retry:active{transform:translateY(2px)}
+  #mute{position:fixed;right:16px;top:84px;font-size:20px;width:46px;height:46px;border:0;border-radius:50%;background:#ffffffc0;cursor:pointer}
+  #retry:focus-visible,#again:focus-visible{outline:3px solid #fff;outline-offset:3px}
+  /* Result screen */
+  #result{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+    background:radial-gradient(circle,#070a1c66,#070a1ce6)}
+  #result h1{margin:0;font-size:clamp(34px,9vw,84px);font-style:italic;color:var(--gold);text-shadow:0 0 30px var(--pink)}
+  #result .d{font-size:clamp(44px,12vw,120px);font-weight:900;color:var(--cyan);text-shadow:0 0 30px var(--cyan);line-height:1.1}
+  #result p{margin:6px 0 18px;font-size:clamp(14px,3vw,20px);opacity:.9}
+  #again{font:inherit;font-weight:900;font-size:24px;color:var(--ink);background:var(--cyan);border:0;border-radius:14px;padding:16px 46px;cursor:pointer;box-shadow:0 0 30px var(--cyan)}
+  /* Garage: car selector shown before the run starts */
+  #garage{position:fixed;left:50%;bottom:70px;transform:translateX(-50%);display:flex;align-items:center;gap:14px;background:#070a1cc0;border:2px solid var(--cyan);border-radius:18px;padding:10px 14px;box-shadow:0 0 28px #19f0ff66}
+  #garage button{font:inherit;font-weight:900;font-size:22px;color:var(--ink);background:var(--cyan);border:0;border-radius:12px;width:52px;height:52px;cursor:pointer}
+  #garage button:focus-visible{outline:3px solid #fff;outline-offset:3px}
+  #gi{display:flex;flex-direction:column;text-align:center;gap:2px;min-width:min(54vw,270px)}
+  #gi b{font-size:clamp(18px,4.6vw,28px);font-style:italic;color:var(--gold)}
+  #gi span{font-size:13px;opacity:.92}
+  #brand{font-size:11px;letter-spacing:.2em;color:var(--gold)}
+  @media (pointer:coarse){#garage{bottom:128px}}
+  /* Touch controls (only on touch screens) */
+  #pad{display:none;position:fixed;left:0;right:0;bottom:46px;justify-content:space-between;padding:0 16px;pointer-events:none}
+  #pad button{pointer-events:auto;width:76px;height:64px;font-size:20px;font-weight:900;border:0;border-radius:14px;background:#ffffffb8;color:var(--ink)}
+  @media (pointer:coarse){#pad{display:flex}}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div class="hud">
+  <div class="stat"><small>SPEED km/h</small><b id="spd">0</b></div>
+  <div class="stat"><small>ALTITUDE m</small><b id="alt">0</b></div>
+  <div class="stat"><small>DISTANCE m</small><b id="dst">0</b></div>
+  <div class="stat"><small>JUMP m</small><b id="jmp">0</b></div>
+  <div class="stat"><small>HIGH SCORE m</small><b id="hs">0</b></div>
+</div>
+<button id="mute" aria-label="Sound on/off (M)">🔊</button>
+<button id="retry">RETRY / RESET</button>
+<div id="garage"><button id="pv" aria-label="Previous car">◀</button><div id="gi"><small id="brand">SALIH'S MEGA RAMP</small><b id="gn"></b><span id="gd"></span><span id="gs"></span></div><button id="nx" aria-label="Next car">▶</button></div>
+<div id="hint">Pick a car with <b>◀ ▶</b> (or <b>Q / E</b>), then hold <b>W</b> / <b>↑</b> to accelerate down the ramp &nbsp;·&nbsp; In the air: <b>A / ←</b> rotate nose up, <b>D / →</b> rotate nose down &nbsp;·&nbsp; <b>R</b> resets</div>
+<div id="pad"><button data-k="a">◀</button><button data-k="w">GAS</button><button data-k="d">▶</button></div>
+<div id="result"><h1>Jump Completed!</h1><div style="letter-spacing:.2em;color:var(--gold);margin:-4px 0 6px">SALIH'S MEGA RAMP</div><div class="d" id="rd">0 m</div><p id="rm"></p><button id="again">TRY AGAIN</button></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+'use strict';
+
+/* ---------- helpers ---------- */
+const R = Math.random, PI = Math.PI, TAU = PI * 2;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));      // angle -> (-PI, PI]
+const $ = id => document.getElementById(id);
+const mkCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+
+/* ---------- renderer, scene, camera ---------- */
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+$('game').appendChild(renderer.domElement);
+
+const FOG = 0xffb08a;                      // sunset horizon colour (sky, fog and sea all blend into it)
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(FOG);
+scene.fog = new THREE.Fog(FOG, 400, 3500);
+const cam = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 1, 12000);
+
+scene.add(new THREE.HemisphereLight(0xffd9c0, 0x2a5a8a, 0.85));
+// neon reflection map so the glossy paint has something to reflect
+{
+  const f = [];
+  for (let i = 0; i < 6; i++) {
+    const c = mkCanvas(64, 64), g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 64);
+    if (i === 2)      { gr.addColorStop(0, '#2d2a8a'); gr.addColorStop(1, '#2d2a8a'); }   // up
+    else if (i === 3) { gr.addColorStop(0, '#14507a'); gr.addColorStop(1, '#14507a'); }   // down (sea)
+    else { gr.addColorStop(0, '#2d2a8a'); gr.addColorStop(.5, '#ff8a9a'); gr.addColorStop(.6, '#ffb08a'); gr.addColorStop(.62, '#14507a'); gr.addColorStop(1, '#14507a'); }
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64); f.push(c);
+  }
+  const e = new THREE.CubeTexture(f); e.encoding = THREE.sRGBEncoding; e.needsUpdate = true; scene.environment = e;
+}
+const sun = new THREE.DirectionalLight(0xffe0b8, 1.2);
+sun.position.set(60, 120, 80);
+sun.castShadow = true;                       // real-time shadow that follows the car
+sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -.0005;
+Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 320 });
+scene.add(sun, sun.target, cam);             // camera is in the scene so speed lines can be attached to it
+
+/* ---------- sky: sunset gradient dome, low sun, clouds, stars ---------- */
+const skyTex = (() => {
+  const c = mkCanvas(8, 256), g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, '#0b1650'); gr.addColorStop(.22, '#2d2a8a'); gr.addColorStop(.36, '#8a4fb0'); gr.addColorStop(.45, '#ff7a9a'); gr.addColorStop(.5, '#ffb08a'); gr.addColorStop(1, '#ffb08a');
+  g.fillStyle = gr; g.fillRect(0, 0, 8, 256);
+  return new THREE.CanvasTexture(c);
+})();
+const sky = new THREE.Mesh(new THREE.SphereGeometry(4500, 24, 16),
+  new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false }));
+scene.add(sky);
+// low sun straight ahead + sunset clouds (children of the dome, so they follow the camera)
+{
+  const sc = mkCanvas(256, 256), sg = sc.getContext('2d'), sr = sg.createRadialGradient(128, 128, 4, 128, 128, 128);
+  sr.addColorStop(0, '#fffbe8'); sr.addColorStop(.12, '#ffe9a8'); sr.addColorStop(.3, '#ffa860aa'); sr.addColorStop(1, '#ff7a5000');
+  sg.fillStyle = sr; sg.fillRect(0, 0, 256, 256);
+  const sunS = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(sc), blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  sunS.scale.set(1500, 1500, 1); sunS.position.set(0, 420, -4200); sky.add(sunS);
+  const cc = mkCanvas(128, 128), cg = cc.getContext('2d');
+  [[64, 70, 46], [40, 76, 30], [92, 78, 32], [66, 54, 30]].forEach(([x, y, r]) => {
+    const gr = cg.createRadialGradient(x, y, 2, x, y, r); gr.addColorStop(0, '#fff'); gr.addColorStop(1, '#fff0'); cg.fillStyle = gr; cg.fillRect(0, 0, 128, 128);
+  });
+  const cm = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cc), color: 0xffb7a0, opacity: .8, depthWrite: false, fog: false });
+  for (let i = 0; i < 26; i++) {
+    const a = R() * TAU, c = new THREE.Sprite(cm);
+    c.scale.set(700 + R() * 600, 260 + R() * 160, 1); c.position.set(Math.cos(a) * 3800, 200 + R() * 1100, Math.sin(a) * 3800); sky.add(c);
+  }
+}
+{
+  const n = 600, p = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const a = R() * TAU, e = R() * 1.1 + 0.15;
+    p[i*3] = Math.cos(a) * 4000 * Math.cos(e * .5); p[i*3+1] = Math.sin(e) * 2400 + 300; p[i*3+2] = Math.sin(a) * 4000 * Math.cos(e * .5);
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 2, sizeAttenuation: false, fog: false })));
+}
+
+/* ---------- track profile: height as a function of distance s along the track ----------
+   Track runs along -Z. A section is a list of [s, height] keypoints; heights are
+   linearly interpolated per metre and then blurred so the ramp CURVES smoothly. */
+const FL = -450;                 // grid floor far below
+const RW = 26;                   // ramp width
+const H0 = 650, VAL = -110, LIPH = 150, ANG = 38 * PI / 180;   // start height, valley floor, launch-lip height, launch angle
+const climbX = 2 * (LIPH - VAL) / Math.tan(ANG);               // horizontal length of the climb out of the valley
+const ramp = [[-30, H0], [40, H0]];                            // 1) start platform
+for (let i = 1; i <= 14; i++) {                                // 2) very steep curved drop down into the valley
+  const u = i / 14, e = u * u * (3 - 2 * u);
+  ramp.push([Math.round(40 + u * 720), Math.round((H0 + (VAL - H0) * (.55 * u + .45 * e)) * 10) / 10]);
+}
+ramp.push([830, VAL]);                                         // 3) flat valley floor (gives you a dip to build speed)
+for (let i = 1; i <= 10; i++) {                                // 4) long curved climb up to a high launch lip
+  const x = climbX * i / 10;
+  ramp.push([Math.round(830 + x), Math.round((VAL + Math.tan(ANG) * x * x / (2 * climbX)) * 10) / 10]);
+}
+const LIP = ramp[ramp.length - 1][0];                          // s where the car leaves the ramp
+const PAD0 = LIP + 500, RAMPL = 900, PAD1 = PAD0 + RAMPL + 2500;   // landing ramp starts 500 m after the lip
+const PW = 80;                   // landing zone width
+const N = PAD1 + 160, O = 60;    // table size / offset (so s = -60 is index 0)
+const H = new Float32Array(N).fill(FL);
+[
+  ramp,
+  [[PAD0, 160], [PAD0 + RAMPL, 0], [PAD1, 0]]                  // 5) sloped landing ramp that flattens into the pad
+].forEach(p => {
+  const a = p[0][0], b = p[p.length-1][0], arr = [];
+  for (let s = a; s <= b; s++) {
+    let k = 0; while (p[k+1][0] < s) k++;
+    const q = p[k], w = p[k+1];
+    arr.push(q[1] + (w[1] - q[1]) * (s - q[0]) / (w[0] - q[0]));
+  }
+  for (let it = 0; it < 3; it++) {                                  // box-blur = smooth curve
+    const c = arr.slice();
+    for (let i = 0; i < arr.length; i++) { let t = 0; for (let j = -14; j <= 14; j++) t += c[clamp(i+j, 0, arr.length-1)]; arr[i] = t / 29; }
+  }
+  arr.forEach((v, i) => H[a + i + O] = v);
+});
+const hAt = s => {                                                  // ground height (FL = void)
+  const f = s + O; if (f < 0 || f >= N - 1) return FL;
+  const i = f | 0, t = f - i, a = H[i], b = H[i+1];
+  return (a <= FL || b <= FL) ? FL : a + (b - a) * t;
+};
+const slopeAt = s => {                                              // dh/ds
+  if (hAt(s) <= FL) return 0;
+  const a = hAt(s-1), b = hAt(s+1);
+  return (a <= FL || b <= FL) ? 0 : (b - a) / 2;
+};
+
+/* ---------- build track meshes from the height table ---------- */
+function strip(a, b, width, x0, hOff0, hOff1, uvFn, mat, bottom) {
+  // ribbon along the track between two height offsets (or down to the floor when bottom=true)
+  const n = Math.ceil((b - a) / 2), pos = [], uv = [], idx = [];
+  for (let i = 0; i <= n; i++) {
+    const s = a + i * (b - a) / n, h = hAt(s);
+    pos.push(x0, h + hOff0, -s, x0 + width, bottom ? FL : h + hOff1, -s);
+    uv.push(...uvFn(s, 0), ...uvFn(s, 1));
+    if (i < n) { const k = i * 2; idx.push(k, k+1, k+2, k+1, k+3, k+2); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx); g.computeVertexNormals();
+  const m = new THREE.Mesh(g, mat); m.receiveShadow = true; scene.add(m); return m;
+}
+const road = new THREE.MeshStandardMaterial({ roughness: .7, metalness: .3, side: THREE.DoubleSide, map: (() => {
+  const c = mkCanvas(128, 128), g = c.getContext('2d');
+  g.fillStyle = '#1a1d3a'; g.fillRect(0, 0, 128, 128);
+  g.fillStyle = '#19f0ff'; g.fillRect(0, 0, 4, 128); g.fillRect(124, 0, 4, 128);
+  g.fillStyle = '#ff2bd6'; g.fillRect(62, 10, 4, 44);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; })() });
+const wall = new THREE.MeshStandardMaterial({ color: 0x23275a, roughness: .9, side: THREE.DoubleSide });
+const neonC = new THREE.MeshBasicMaterial({ color: 0x19f0ff, side: THREE.DoubleSide });
+const neonP = new THREE.MeshBasicMaterial({ color: 0xff2bd6, side: THREE.DoubleSide });
+
+// mega ramp: road surface, solid side walls and glowing rails
+strip(-30, LIP, RW, -RW/2, 0, 0, (s, k) => [k, s / 16], road);
+[[-RW/2, neonC], [RW/2, neonP]].forEach(([x, m]) => {
+  strip(-30, LIP, 0, x, 0, 0, (s, k) => [0, 0], wall, true);          // wall down to the floor
+  strip(-30, LIP, 0, x, 0, 1.4, (s, k) => [0, 0], m);                 // rail
+});
+{ // end caps (so the ramp looks solid from the front and back)
+  [[-30, 0], [LIP, 1]].forEach(([s, front]) => {
+    const h = hAt(s + (front ? -.5 : .5)), m = new THREE.Mesh(new THREE.PlaneGeometry(RW, h - FL), wall);
+    m.position.set(0, (h + FL) / 2, -s); scene.add(m);
+  });
+}
+// landing zone: textured pad with distance markers every 50 m / labels every 100 m
+const padTex = (() => {
+  const w = 256, h = 4096, c = mkCanvas(w, h), g = c.getContext('2d'), len = PAD1 - PAD0;
+  g.fillStyle = '#10142e'; g.fillRect(0, 0, w, h);
+  g.strokeStyle = '#19f0ff'; g.lineWidth = 6; g.strokeRect(3, 0, w - 6, h);
+  g.fillStyle = '#ff2bd6'; for (let y = 0; y < h; y += 60) g.fillRect(w/2 - 2, y, 4, 30);
+  g.font = 'bold 30px Trebuchet MS'; g.textAlign = 'center'; g.fillStyle = '#fff';
+  for (let d = PAD0 - LIP; d <= PAD1 - LIP - 100; d += 50) {
+    const y = h - (LIP + d - PAD0) / len * h;
+    g.fillStyle = d % 100 === 0 ? '#ffd23a' : '#19f0ff'; g.fillRect(0, y, w, d % 100 === 0 ? 5 : 2);
+    if (d % 100 === 0) { g.fillStyle = '#fff'; g.fillText(d + ' m', w / 2, y - 8); }
+  }
+  const t = new THREE.CanvasTexture(c); t.anisotropy = 8; return t;
+})();
+strip(PAD0, PAD1, PW, -PW/2, 0, 0, (s, k) => [k, (s - PAD0) / (PAD1 - PAD0)], new THREE.MeshStandardMaterial({ map: padTex, roughness: .8, side: THREE.DoubleSide }));
+// solid side walls + front face for the landing ramp
+[-PW / 2, PW / 2].forEach(x => strip(PAD0, PAD1, 0, x, 0, 0, (s, k) => [0, 0], wall, true));
+{ const m = new THREE.Mesh(new THREE.PlaneGeometry(PW, hAt(PAD0 + .5) - FL), wall); m.position.set(0, (hAt(PAD0 + .5) + FL) / 2, -PAD0); scene.add(m); }
+// target bullseye on the pad
+[[36, 29, 0xff2bd6], [25, 18, 0x19f0ff], [14, 7, 0xffd23a]].forEach(([ro, ri, col]) => {
+  const m = new THREE.Mesh(new THREE.RingGeometry(ri, ro, 48), new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide }));
+  m.rotation.x = -PI / 2; m.position.set(0, .15, -(LIP + 1800)); scene.add(m);
+});
+// the sea far below: animated waves, sky reflection (fresnel), a glittering sun path and white caps
+const SUN_DIR = new THREE.Vector3(0, .1, -1).normalize();          // low sun straight ahead
+const sea = new THREE.Mesh(new THREE.PlaneGeometry(16000, 16000), new THREE.ShaderMaterial({
+  uniforms: { uT: { value: 0 }, uSun: { value: SUN_DIR }, uFog: { value: new THREE.Color(FOG) }, uFogR: { value: new THREE.Vector2(400, 3500) } },
+  vertexShader: `varying vec3 vW;
+    void main() { vec4 w = modelMatrix * vec4(position, 1.); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+  fragmentShader: `uniform float uT; uniform vec3 uSun; uniform vec3 uFog; uniform vec2 uFogR; varying vec3 vW;
+    // one travelling sine wave: adds its slope to g and its height to h
+    void addW(inout vec2 g, inout float h, vec2 p, vec2 d, float k, float a, float w) {
+      d = normalize(d); float ph = k * dot(d, p) + w * uT;
+      g += d * a * k * cos(ph); h += a * sin(ph);
+    }
+    void main() {
+      vec2 g = vec2(0.); float h = 0.; vec2 p = vW.xz;
+      addW(g, h, p, vec2( 1.0,  .4), .020, 5.0, 1.1);
+      addW(g, h, p, vec2(-.6,  1.0), .035, 2.8, 1.5);
+      addW(g, h, p, vec2( .3, -1.0), .070, 1.2, 2.1);
+      addW(g, h, p, vec2(-1.0, -.5), .140, .55, 3.0);
+      addW(g, h, p, vec2( .9,   .9), .300, .22, 4.4);
+      vec3 N = normalize(vec3(-g.x, 1., -g.y));
+      vec3 V = normalize(cameraPosition - vW);
+      vec3 Rf = reflect(-V, N);
+      float fres = .04 + .96 * pow(1. - max(dot(N, V), 0.), 5.);
+      vec3 sky = mix(uFog, vec3(.17, .16, .54), pow(clamp(Rf.y, 0., 1.), .5));
+      float sd = max(dot(Rf, uSun), 0.);
+      sky += vec3(1., .85, .6) * (pow(sd, 400.) * 6. + pow(sd, 30.) * .5);       // sun glitter + glow
+      vec3 body = mix(vec3(.004, .04, .09), vec3(.03, .2, .28), clamp(.5 + h * .06, 0., 1.));
+      vec3 col = mix(body, sky, fres);
+      col = mix(col, vec3(.9), smoothstep(5.5, 8.5, h) * .6);                     // foam on the highest crests
+      col = mix(col, uFog, smoothstep(uFogR.x, uFogR.y, length(vW - cameraPosition)));
+      gl_FragColor = vec4(col, 1.);
+      #include <tonemapping_fragment>
+      #include <encodings_fragment>
+    }`
+}));
+sea.rotation.x = -PI / 2; sea.position.set(0, FL, -2600); scene.add(sea);
+
+// glowing light pillars along both sides of the landing zone
+{
+  const gt = (() => { const c = mkCanvas(64, 64), g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 2, 32, 32, 32);
+    gr.addColorStop(0, '#fff'); gr.addColorStop(.3, '#ffffff55'); gr.addColorStop(1, '#fff0'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+  for (let d = PAD0 + 30; d < PAD1; d += 120) [-1, 1].forEach(sd => {
+    const col = sd < 0 ? 0x19f0ff : 0xff2bd6, x = sd * (PW / 2 + 4);
+    const pl = new THREE.Mesh(new THREE.BoxGeometry(1, 14, 1), new THREE.MeshBasicMaterial({ color: col })); pl.position.set(x, hAt(d) + 7, -d); scene.add(pl);
+    const gl = new THREE.Sprite(new THREE.SpriteMaterial({ map: gt, color: col, blending: THREE.AdditiveBlending, depthWrite: false }));
+    gl.scale.set(24, 24, 1); gl.position.set(x, hAt(d) + 14, -d); scene.add(gl);
+  });
+}
+
+/* ---------- the garage: 5 ORIGINAL hero-style cars (no copyrighted Avengers designs) ----------
+   b = body colour, a = accent colour, L/W = length/width, belt/roof = heights, wr = wheel radius,
+   pw = engine power multiplier, hd = mid-air flip control multiplier,
+   dg = air-drag multiplier (lower = faster), tg = how hard a landing it survives */
+/* */
+const CARS = [
+  { n: 'Crimson Titan',    d: 'Armored red-and-gold supercar with a glowing arc light', b: 0xc4121a, a: 0xf2b632, L: 4.8, W: 2,   belt: .78, roof: 1.28, wr: .44, wing: 1, arc: 1,    pw: 1.00, hd: .95 },
+  { n: 'Liberty Guardian', d: 'Navy-blue muscle coupe with white racing stripes',        b: 0x1a3a8f, a: 0xf2f2f2, L: 5.0, W: 2,   belt: .86, roof: 1.40, wr: .46, wing: 0, stripe: 1, pw: .95,  hd: 1.0 },
+  { n: 'Night Widow',      d: 'Stealth-black hypercar with red neon glow',               b: 0x14141a, a: 0xe01030, L: 4.7, W: 2,   belt: .74, roof: 1.20, wr: .44, wing: 1, stripe: 1, pw: 1.05, hd: 1.1 },
+  { n: 'Green Brute',      d: 'Monster-muscle truck: huge wheels, extra power',          b: 0x2f9a2f, a: 0x7b3fb5, L: 5.1, W: 2.3, belt: 1.05, roof: 1.70, wr: .70, wing: 0,          pw: 1.15, hd: .8 },
+  { n: 'Storm Bolt',       d: 'Silver racer with a lightning-yellow stripe',             b: 0xc9d3de, a: 0xffd21f, L: 4.8, W: 2,   belt: .76, roof: 1.25, wr: .44, wing: 1, stripe: 1, pw: 1.00, hd: 1.0 },
+  { n: 'Salih',            d: 'Rocket-powered gold hypercar. Built to fly 3,000 m!',      b: 0xf0b323, a: 0x19f0ff, L: 5.0, W: 2.05, belt: .72, roof: 1.17, wr: .46, wing: 1, stripe: 1, rocket: 1, pw: 2.3, dg: .33, tg: 1.8, hd: 1.05 }
+];
+
+/* extrude a side-view outline (x = length, y = height) into a smooth, bevelled body panel */
+function ext(pts, W, mat) {
+  const sh = new THREE.Shape();
+  pts.forEach((p, i) => i ? sh.lineTo(p[0], p[1]) : sh.moveTo(p[0], p[1]));
+  const g = new THREE.ExtrudeGeometry(sh, { depth: W, bevelEnabled: true, bevelThickness: .14, bevelSize: .13, bevelSegments: 4, steps: 1 });
+  g.translate(0, 0, -W / 2);
+  const m = new THREE.Mesh(g, mat); m.rotation.y = PI / 2;          // nose points to -Z
+  return m;
+}
+
+function buildCar(c) {
+  const g = new THREE.Group(), { L, W, belt, roof, wr } = c, h = L / 2, lift = wr - .44;
+  const paint  = new THREE.MeshPhysicalMaterial({ color: c.b, metalness: .5, roughness: .24, clearcoat: 1, clearcoatRoughness: .05, emissive: c.b, emissiveIntensity: .18 });
+  const accent = new THREE.MeshStandardMaterial({ color: c.a, metalness: .4, roughness: .3, emissive: c.a, emissiveIntensity: .5 });
+  const glass  = new THREE.MeshStandardMaterial({ color: 0x3a6a9a, metalness: .6, roughness: .06, emissive: 0x0c2a44, emissiveIntensity: .8 });
+  const blk    = new THREE.MeshStandardMaterial({ color: 0x1a1c24, roughness: .6 });
+  const chrome = new THREE.MeshStandardMaterial({ color: 0xdde2e8, metalness: 1, roughness: .2 });
+  const body = new THREE.Group(); body.position.y = lift; g.add(body);
+  const box = (w, hh, d, m, x, y, z) => { const q = new THREE.Mesh(new THREE.BoxGeometry(w, hh, d), m); q.position.set(x, y, z); body.add(q); return q; };
+
+  body.add(ext([[-h, .42], [-h, belt + .05], [-h + L * .3, belt + .07], [h - L * .32, belt + .02], [h, belt - .18], [h, .42]], W - .3, paint)); // lower body: trunk, hood, nose
+  body.add(ext([[-L * .2, belt + .04], [-L * .09, roof], [L * .1, roof], [L * .25, belt + .04]], W * .8 - .3, glass));                         // glass cabin
+  box(W * .8 - .1, .07, L * .2, paint, 0, roof + .05, -L * .005);                                                                              // roof panel
+  [-1, 1].forEach(d => {
+    box(.06, .14, L * .62, accent, d * (W / 2 + .02), .62, 0);                                                                                   // side accent stripe
+    box(.5, .14, .08, new THREE.MeshBasicMaterial({ color: 0xf4fbff }), d * W * .3, belt - .14, -h - .1);                                       // headlights
+    box(.5, .1, .08, new THREE.MeshBasicMaterial({ color: 0xff1030 }), d * W * .3, belt, h + .1);                                              // tail lights
+  });
+  box(W * .55, .16, .1, blk, 0, .6, -h - .12);                                                                                                  // front grille
+  box(W * .5, .07, .08, new THREE.MeshBasicMaterial({ color: 0xff2030 }), 0, belt - .02, h + .09);                                             // tail light bar
+  if (c.wing) { [-1, 1].forEach(d => box(.08, .35, .1, blk, d * W * .32, belt + .3, h - .35)); box(W * .9, .07, .55, accent, 0, belt + .52, h - .35); }
+  if (c.stripe) [-.2, .2].forEach(x => {                                                                                                        // racing stripes
+    box(.2, .03, L * .2, accent, x, roof + .1, -L * .005);
+    const hs = box(.2, .03, L * .32, accent, x, belt + .06, -(h - L * .16)); hs.rotation.x = -.13;
+    box(.2, .03, L * .25, accent, x, belt + .2, h - L * .2);
+  });
+  if (c.arc) {                                                                                                                                  // glowing arc light on the hood
+    const arc = new THREE.Mesh(new THREE.CircleGeometry(.3, 24), new THREE.MeshBasicMaterial({ color: 0x9ff4ff }));
+    arc.rotation.x = -PI / 2 - .13; arc.position.set(0, belt + .1, -(h - L * .16)); body.add(arc);
+  }
+  const wheels = [];
+  [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz]) => {                                                                                  // wheels: tyre, rim, hub, spokes
+    const w = new THREE.Group();
+    [[wr, .4, blk], [wr * .66, .42, chrome], [.1, .46, blk]].forEach(([r, wd, m]) => { const q = new THREE.Mesh(new THREE.CylinderGeometry(r, r, wd, 24), m); q.rotation.z = PI / 2; w.add(q); });
+    for (let k = 0; k < 5; k++) { const sp = new THREE.Mesh(new THREE.BoxGeometry(.04, wr * 1.2, .09), blk); sp.rotation.x = k * TAU / 5; sp.position.x = sx * .22; w.add(sp); }
+    w.position.set(sx * (W / 2 - .05), wr, sz * L * .31); g.add(w); wheels.push(w);
+  });
+  const glow = new THREE.Mesh(new THREE.PlaneGeometry(W + .5, L + .4), new THREE.MeshBasicMaterial({ color: c.a, transparent: true, opacity: .45, blending: THREE.AdditiveBlending, depthWrite: false }));
+  glow.rotation.x = -PI / 2; glow.position.y = .08; g.add(glow);                                                                                // neon underglow
+  const flames = [], big = c.rocket, fh = big ? 4 : 2;
+  if (big) [-.55, .55].forEach(x => {                                                                                                            // rocket nozzles
+    const nz = new THREE.Mesh(new THREE.CylinderGeometry(.26, .36, .7, 16), chrome); nz.rotation.x = PI / 2; nz.position.set(x, .55 + lift, h + .1); g.add(nz);
+  });
+  [-.55, .55].forEach(x => {                                                                                                                     // exhaust flames (shown while accelerating)
+    const f = new THREE.Mesh(new THREE.ConeGeometry(big ? .3 : .2, fh, 10), new THREE.MeshBasicMaterial({ color: big ? 0x6fe6ff : 0xff8a2a, transparent: true, opacity: .85, blending: THREE.AdditiveBlending, depthWrite: false }));
+    f.rotation.x = PI / 2; f.position.set(x, .55 + lift, h + .1 + fh / 2); f.visible = false; g.add(f); flames.push(f);
+  });
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  g.userData = { wheels, flames, wr };
+  return g;
+}
+
+const pivot = new THREE.Group();          // rotates around the car's centre of mass
+scene.add(pivot);
+const carLight = new THREE.PointLight(0xbfe8ff, 1.8, 45); carLight.position.set(0, 3.5, 2); pivot.add(carLight);   // keeps the car lit
+let car = null, ci = 0;
+function setCar(i) {                      // swap the visible car + update the garage panel
+  ci = (i + CARS.length) % CARS.length;
+  if (car) pivot.remove(car);
+  const c = CARS[ci];
+  car = buildCar(c); car.position.y = -.7; pivot.add(car);
+  const st = v => { v = clamp(v, 1, 5); return '★'.repeat(v) + '☆'.repeat(5 - v); };
+  sfx.blip();
+  $('gn').textContent = c.n; $('gd').textContent = c.d;
+  $('gs').textContent = 'Power ' + st(Math.round((c.pw - .8) * 14)) + '   Flip control ' + st(Math.round((c.hd - .6) * 10));
+}
+
+/* ---------- game state ---------- */
+const G = 22;                      // gravity (m/s^2), a bit arcade-strong for drama
+let state = 'ready';               // ready -> run -> air -> done
+let s, y, vs, vy, pitch, roll, grounded, air, best = 0, shake = 0, sparks = [];
+const keys = {};
+let garageOn = null;
+try { best = +localStorage.getItem('megaramp_best') || 0; } catch (e) {}      // saved high score
+
+function reset() {
+  s = 0; y = hAt(0); vs = 0; vy = 0; pitch = 0; roll = 0; grounded = true; air = 0; shake = 0;
+  state = 'ready'; pivot.visible = true;
+  sparks.forEach(p => scene.remove(p.m)); sparks = [];
+  $('result').style.display = 'none';
+  cam.position.set(0, y + 6, 16);
+}
+
+/* particles for crashes / landings */
+function burst(n, cols, power) {
+  for (let i = 0; i < n; i++) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(.35, .35, .35), new THREE.MeshBasicMaterial({ color: cols[i % cols.length] }));
+    m.position.set(0, y + .8, -s); scene.add(m);
+    sparks.push({ m, v: new THREE.Vector3((R()-.5) * power, R() * power * .7, (R()-.5) * power), l: 1.8 });
+  }
+}
+
+/* end the jump and show the result screen */
+function finish(kind, crashed, splash) {
+  state = 'done';
+  const dist = Math.max(0, Math.round(s - LIP));
+  const isNew = dist > best;
+  if (isNew) { best = dist; try { localStorage.setItem('megaramp_best', best); } catch (e) {} }
+  if (crashed) { pivot.visible = false; burst(90, splash ? [0xffffff, 0x6fd2ff, 0x2a8ac0] : [0xff7a1a, 0xffd23a, 0x19f0ff, 0xff2bd6], 30); shake = 2; }
+  else { burst(24, [0xffffff, 0x19f0ff], 16); shake = .8; }
+  setTimeout(() => {
+    $('rd').textContent = dist + ' m';
+    $('rm').textContent = kind + '   ·   High score: ' + best + ' m' + (isNew && dist > 0 ? '   🏆 NEW HIGH SCORE!' : '');
+    $('result').style.display = 'flex';
+  }, 900);
+}
+
+/* evaluate the first touchdown after the launch */
+function land(impact, gh) {
+  const e = Math.abs(wrap(pitch - Math.atan(slopeAt(s)))), r = Math.abs(wrap(roll));
+  if (gh <= FL + 1)                                                   { sfx.splash(); finish('Fell into the sea!', true, true); }
+  else if (impact > 140 * (CARS[ci].tg || 1) || e > 1.1 || r > 1.1)   { sfx.crash();  finish('Crash landing', true); }
+  else { const perfect = e < .3 && r < .3; sfx.land(impact); if (perfect) sfx.chime(); finish(perfect ? 'Perfect landing!' : 'Safe landing', false); }
+}
+
+/* ---------- physics (one sub-step) ---------- */
+function physics(dt) {
+  // 1. forces: engine thrust (W) while on the ramp, gravity, air resistance
+  const thrust = (keys.w && grounded && (state === 'ready' || state === 'run')) ? 16 * CARS[ci].pw : 0;
+  const speed = Math.hypot(vs, vy), drag = 0.0003 * (CARS[ci].dg || 1) * speed;
+  vs += (thrust - drag * vs) * dt;
+  vy += (-G - drag * vy) * dt;
+  if (grounded && state === 'done') vs *= (1 - dt * .9);            // roll to a stop after landing
+  // 2. integrate position
+  s += vs * dt; y += vy * dt;
+  if (state === 'ready' && vs > .5) { state = 'run'; sfx.go(); }
+
+  // 3. mid-air rotation: A/D flip the car; with no key held it stabilises along its trajectory
+  if (!grounded) {
+    air += dt;
+    const k = (keys.a ? 1 : 0) - (keys.d ? 1 : 0);
+    const rate = k ? k * 3.4 * CARS[ci].hd : wrap(Math.atan2(vy, vs) - pitch) * 1.5;
+    pitch += rate * dt; roll += wrap(-roll) * 1.5 * dt;
+  }
+
+  // 4. ground contact: remove the velocity component pointing into the surface
+  const gh = hAt(s);
+  if (y <= gh) {
+    const sl = slopeAt(s), n = Math.hypot(1, sl), nx = -sl / n, ny = 1 / n, vn = vs * nx + vy * ny;
+    if (vn < 0) {
+      if (!grounded && state === 'air') land(-vn, gh);
+      vs -= vn * nx; vy -= vn * ny;
+    }
+    y = gh; grounded = true;
+  } else if (y > gh + .15) {
+    grounded = false;
+    if (state === 'run' && s > LIP - 6) { state = 'air'; air = 0; sfx.launch(); }  // left the launch lip
+  }
+  // 5. on the ground, the car follows the slope
+  if (grounded) {
+    const sl = Math.atan(slopeAt(s)), d = wrap(pitch - sl);
+    pitch = sl + d * Math.max(0, 1 - dt * 12); roll *= Math.max(0, 1 - dt * 12);
+  }
+}
+
+/* ---------- sound: everything is synthesised with WebAudio (no sound files) ---------- */
+let AC = null, muted = false;
+const A = {};
+function initAudio() {                                   // must run after the first key press / tap
+  if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+  try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
+  const out = AC.createGain(); out.gain.value = muted ? 0 : .9; out.connect(AC.destination); A.out = out;
+  const nb = AC.createBuffer(1, AC.sampleRate * 2, AC.sampleRate), nd = nb.getChannelData(0);   // 2 s of white noise
+  for (let i = 0; i < nd.length; i++) nd[i] = R() * 2 - 1;
+  A.noise = nb;
+  const loop = (type, f, q, v) => {                      // looping filtered noise (wind, sea)
+    const src = AC.createBufferSource(); src.buffer = nb; src.loop = true;
+    const fl = AC.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q;
+    const gn = AC.createGain(); gn.gain.value = v; src.connect(fl); fl.connect(gn); gn.connect(out); src.start(); return { fl, gn };
+  };
+  A.wind = loop('bandpass', 500, .7, 0);
+  A.sea = loop('lowpass', 380, .5, .07);
+  const lfo = AC.createOscillator(), lg = AC.createGain(); lfo.frequency.value = .13; lg.gain.value = .04;   // slow wave swell
+  lfo.connect(lg); lg.connect(A.sea.gn.gain); lfo.start();
+  const o1 = AC.createOscillator(), o2 = AC.createOscillator(), ef = AC.createBiquadFilter(), eg = AC.createGain();   // engine
+  o1.type = 'sawtooth'; o2.type = 'square'; ef.type = 'lowpass'; ef.frequency.value = 700; eg.gain.value = 0;
+  o1.connect(ef); o2.connect(ef); ef.connect(eg); eg.connect(out); o1.start(); o2.start();
+  A.eng = { o1, o2, ef, eg };
+}
+function tone(f0, f1, dur, type, vol) {
+  if (!AC) return; const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+  o.connect(g); g.connect(A.out); o.start(t); o.stop(t + dur);
+}
+function noiseBurst(dur, f0, f1, vol, type) {
+  if (!AC) return; const t = AC.currentTime, src = AC.createBufferSource(), fl = AC.createBiquadFilter(), g = AC.createGain();
+  src.buffer = A.noise; fl.type = type; fl.frequency.setValueAtTime(f0, t); fl.frequency.exponentialRampToValueAtTime(Math.max(30, f1), t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+  src.connect(fl); fl.connect(g); g.connect(A.out); src.start(t, R()); src.stop(t + dur);
+}
+const sfx = {
+  blip:   () => tone(660, 990, .1, 'triangle', .12),                                         // garage: change car
+  go:     () => { tone(120, 420, .5, 'sawtooth', .15); noiseBurst(.6, 300, 2500, .15, 'bandpass'); },   // start rolling
+  launch: () => noiseBurst(.9, 400, 3000, .3, 'bandpass'),                                   // leaving the lip
+  land:   v  => { tone(90, 40, .35, 'sine', .4); noiseBurst(.4, 1200, 120, clamp(v / 150, .2, .7), 'lowpass'); },
+  chime:  () => [660, 880, 1320].forEach((f, i) => setTimeout(() => tone(f, f * 1.01, .35, 'sine', .15), i * 110)),
+  crash:  () => { noiseBurst(1.4, 3000, 80, .8, 'lowpass'); tone(110, 30, .9, 'sawtooth', .35); },
+  splash: () => { noiseBurst(1.2, 4000, 400, .6, 'bandpass'); tone(160, 60, .6, 'sine', .3); }
+};
+function audioFrame(sp) {                                // engine pitch + wind follow the speed every frame
+  if (!AC) return;
+  const t = AC.currentTime, c = CARS[ci], rocket = !!c.rocket, e = A.eng;
+  const thr = keys.w && (state === 'ready' || state === 'run') ? 1 : 0;
+  const f = (rocket ? 90 : 55) + sp * (rocket ? 1.1 : 1.6) + thr * 30;
+  e.o1.frequency.setTargetAtTime(f, t, .08); e.o2.frequency.setTargetAtTime(f * .503, t, .08);
+  e.ef.frequency.setTargetAtTime(500 + sp * 6 + thr * 700, t, .1);
+  const base = !pivot.visible ? 0 : state === 'air' ? .03 : state === 'ready' && !thr ? .02 : .045 + thr * .06;
+  e.eg.gain.setTargetAtTime(base, t, .1);
+  A.wind.fl.frequency.setTargetAtTime(350 + sp * 7, t, .2);
+  A.wind.gn.gain.setTargetAtTime(Math.min(sp / 220, 1) * (state === 'air' ? .5 : .3) + (rocket && thr ? .2 : 0), t, .2);
+}
+function setMuted(m) { muted = m; $('mute').textContent = m ? '🔇' : '🔊'; if (A.out) A.out.gain.value = m ? 0 : .9; }
+
+/* ---------- speed lines (attached to the camera) ---------- */
+const NL = 120, lines = [], lineGeo = new THREE.BufferGeometry();
+for (let i = 0; i < NL; i++) lines.push({ x: (R() - .5) * 30, y: (R() - .5) * 16, z: -4 - R() * 66 });
+lineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(NL * 6), 3));
+const lineMat = new THREE.LineBasicMaterial({ color: 0xbff6ff, transparent: true, opacity: 0, fog: false });
+const speedLines = new THREE.LineSegments(lineGeo, lineMat); speedLines.frustumCulled = false; cam.add(speedLines);
+
+/* ---------- main loop ---------- */
+const clock = new THREE.Clock(), camT = new THREE.Vector3();
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), .05);
+  if (state !== 'done' || pivot.visible) for (let i = 0; i < 4; i++) physics(dt / 4);
+
+  // place the car
+  // the car's centre sits 0.7 m "above" its wheels along its own up-axis (not straight up),
+  // otherwise it would sink into the road on the steep slope
+  pivot.position.set(0, y + .7 * Math.cos(pitch), -s + .7 * Math.sin(pitch));
+  pivot.rotation.set(pitch, 0, roll);
+  const sp = Math.hypot(vs, vy);
+  const cu = car.userData, tnow = performance.now() / 1000;
+  cu.wheels.forEach(w => w.rotation.x -= sp * dt / cu.wr);                                  // wheels spin with speed
+  if (state === 'ready') car.rotation.y = Math.sin(tnow * .9) * .8;                          // showroom sway in the garage
+  else car.rotation.y *= Math.max(0, 1 - dt * 10);
+  const burn = keys.w && grounded && (state === 'ready' || state === 'run');
+  cu.flames.forEach(f => { f.visible = burn; f.scale.y = .6 + R() * .8; });                  // exhaust flames
+  sea.material.uniforms.uT.value = tnow;                                                     // animate the waves
+  audioFrame(sp);                                                                            // engine / wind sound
+  const gOn = state === 'ready';
+  if (gOn !== garageOn) { garageOn = gOn; $('garage').style.display = gOn ? 'flex' : 'none'; }
+  sun.position.set(60, y + 120, -s + 80); sun.target.position.set(0, y, -s);                 // shadow follows the car
+
+  // third-person chase camera. It sits behind the car ALONG ITS DIRECTION OF TRAVEL and above it,
+  // so on the steep ramp it never ends up inside the road surface.
+  let dS = 1, dY = 0;
+  if (sp > 8) { dS = vs / sp; dY = vy / sp; }
+  else if (grounded) { const t = Math.atan(slopeAt(s)); dS = Math.cos(t); dY = Math.sin(t); }
+  const back = 13 + sp * .06, up = 4.5 + Math.min(sp, 120) * .04;
+  camT.set(state === 'ready' ? 5 : 0, y - dY * back + up, -(s - dS * back));
+  cam.position.lerp(camT, 1 - Math.exp(-dt * 6));
+  const floorY = hAt(-cam.position.z);
+  if (floorY > FL) cam.position.y = Math.max(cam.position.y, floorY + 3);   // never below the road
+  if (shake > .01) { cam.position.x += (R() - .5) * shake; cam.position.y += (R() - .5) * shake; shake *= .9; }
+  cam.lookAt(0, y + 1 + dY * 6, -(s + dS * 14));
+  cam.fov = 65 + Math.min(sp, 200) * .12; cam.updateProjectionMatrix();
+  sky.position.copy(cam.position);
+
+  // speed lines
+  const lp = lineGeo.attributes.position.array, ll = sp * .05 + .5;
+  for (let i = 0; i < NL; i++) {
+    const l = lines[i]; l.z += sp * dt * 1.3 + 4 * dt;
+    if (l.z > -3) { l.z = -70; l.x = (R() - .5) * 30; l.y = (R() - .5) * 16; }
+    lp.set([l.x, l.y, l.z, l.x, l.y, l.z - ll], i * 6);
+  }
+  lineGeo.attributes.position.needsUpdate = true; lineMat.opacity = clamp(sp / 150, 0, .45);
+
+  // particles
+  for (let i = sparks.length - 1; i >= 0; i--) {
+    const p = sparks[i]; p.v.y -= 24 * dt; p.m.position.addScaledVector(p.v, dt);
+    p.m.rotation.x += dt * 7; p.l -= dt; p.m.scale.setScalar(Math.max(.01, p.l / 1.8));
+    if (p.l <= 0) { scene.remove(p.m); sparks.splice(i, 1); }
+  }
+
+  // HUD
+  $('spd').textContent = Math.round(sp * 3.6);
+  $('alt').textContent = Math.max(0, Math.round(y));
+  $('dst').textContent = Math.max(0, Math.round(s));                 // total distance driven, always counting
+  $('jmp').textContent = Math.max(0, Math.round(s - LIP));            // distance flown past the launch lip
+  $('hs').textContent = best;                                         // saved high score
+  renderer.render(scene, cam);
+}
+
+/* ---------- input ---------- */
+const map = { w: 'w', arrowup: 'w', a: 'a', arrowleft: 'a', d: 'd', arrowright: 'd' };
+addEventListener('pointerdown', initAudio);
+addEventListener('keydown', e => {
+  initAudio();
+  const k = e.key.toLowerCase();
+  if (k === 'm') { setMuted(!muted); return; }
+  if (state === 'ready' && (k === 'arrowleft' || k === 'arrowright' || k === 'q' || k === 'e')) {   // choose a car in the garage
+    setCar(ci + ((k === 'arrowright' || k === 'e') ? 1 : -1)); e.preventDefault(); return;
+  }
+  if (map[k]) { keys[map[k]] = true; e.preventDefault(); }
+  else if (k === 'r') reset();
+});
+addEventListener('keyup', e => { const k = map[e.key.toLowerCase()]; if (k) keys[k] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+document.querySelectorAll('#pad button').forEach(b => {
+  const k = b.dataset.k;
+  b.addEventListener('pointerdown', e => { e.preventDefault(); keys[k] = true; });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => b.addEventListener(t, () => keys[k] = false));
+});
+$('retry').addEventListener('click', e => { reset(); e.target.blur(); });
+$('again').addEventListener('click', reset);
+$('mute').addEventListener('click', e => { setMuted(!muted); e.target.blur(); });
+$('pv').addEventListener('click', () => setCar(ci - 1));
+$('nx').addEventListener('click', () => setCar(ci + 1));
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); });
+
+setCar(0);
+reset();
+frame();
+})();
+</script>
+</body>
+</html>
